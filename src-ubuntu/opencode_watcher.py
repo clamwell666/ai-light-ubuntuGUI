@@ -133,16 +133,68 @@ def _apply_event(aggregator, session: OpencodeSession, etype: str, data) -> None
             session.added = True
             session.last_status = Status.Idle
 
-        # Tool call extraction (best-effort across part shapes).
+        # --- Tool part status detection --------------------------------------
+        # opencode message parts carry a `state` dict with `status` field
+        # and optional `metadata.exit` (bash exit code).  We use these to
+        # detect permission prompts and tool failures → Error (red lamp).
+        part_type = info.get("type")
+        state = info.get("state") or {}
+        if isinstance(state, str):
+            # Some older shapes store status as a plain string.
+            state = {"status": state}
+
+        if part_type == "tool" and isinstance(state, dict):
+            tool_status = state.get("status")
+            # Tool call name extraction.
+            tool_info = info.get("tool") or {}
+            tool_name = tool_info.get("name") if isinstance(tool_info, dict) else None
+            if tool_name:
+                aggregator.set_last_tool_call(session.session_id, tool_name)
+
+            # Permission/question prompt → Error (needs user action).
+            tool_input = state.get("input") or {}
+            if isinstance(tool_input, dict) and "questions" in tool_input:
+                _set(aggregator, session, Status.Error)
+                session.last_activity_at = time.monotonic()
+                return
+
+            # Tool completed with non-zero exit → Error.
+            if tool_status == "completed":
+                meta = state.get("metadata") or {}
+                exit_code = meta.get("exit") if isinstance(meta, dict) else None
+                if exit_code is not None and int(exit_code) != 0:
+                    _set(aggregator, session, Status.Error)
+                    session.last_activity_at = time.monotonic()
+                    return
+                # Tool completed successfully → stays Working (parent
+                # message.updated will finalize the status).
+                session.last_activity_at = time.monotonic()
+                return
+
+            # Tool running/pending → Working.
+            if tool_status in ("running", "pending"):
+                _set(aggregator, session, Status.Working)
+                session.last_activity_at = time.monotonic()
+                return
+
+        # Fallback: Tool call extraction from part shape (best-effort).
         tool = _extract_tool(info) or _extract_tool(payload.get("part") or {})
         if tool:
             aggregator.set_last_tool_call(session.session_id, tool)
 
+        # --- Message role status mapping --------------------------------------
         if role == "user":
             _set(aggregator, session, Status.Working)
         elif role == "assistant":
+            # Assistant still streaming → Working.
+            # Done is inferred by quiet timeout in _reap_inactive.
             _set(aggregator, session, Status.Working)
-        # Streaming parts keep status Working; quiet->Done handled in _reap_inactive.
+        session.last_activity_at = time.monotonic()
+
+    # session.updated / model.switched / agent.switched → no status change
+    # but count as activity to keep the session alive.
+    elif etype in ("session.updated.1", "session.next.model.switched.1",
+                   "session.next.agent.switched.1"):
         session.last_activity_at = time.monotonic()
 
 
