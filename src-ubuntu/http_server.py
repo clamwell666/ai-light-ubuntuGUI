@@ -160,6 +160,13 @@ def apply_hook_event(aggregator, event: HookEvent) -> None:
     if event.event_type == "session-end":
         aggregator.remove_session(event.session_id)
         return
+    # If this event references a session we don't know about (e.g. Claude
+    # Code was already running before AI Light started, so we missed the
+    # session-start hook), auto-register it so subsequent events aren't
+    # silently dropped.
+    if aggregator.session_status(event.session_id) is None:
+        cwd = event.cwd or os.getcwd()
+        aggregator.add_session(event.session_id, Tool.ClaudeCode, cwd, Status.Idle)
     if _should_ignore_late_event_after_done(aggregator, event):
         return
     status = _EVENT_STATUS_MAP.get(event.event_type)

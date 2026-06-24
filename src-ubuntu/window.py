@@ -134,6 +134,9 @@ class LightWindow(Gtk.Window):
         return False
 
     def _resize_to_content(self) -> None:
+        # Unmaximize first — if the WM put the window in a shaded/maximized
+        # state (e.g. from a double-click), resize alone won't expand it.
+        self.unmaximize()
         self.lights_container.show_all()
         min_rect, nat_rect = self.lights_container.get_preferred_size()
         width = max(64, nat_rect.width + 8)
@@ -214,6 +217,11 @@ class LightWindow(Gtk.Window):
 
     # --- interaction --------------------------------------------------------
     def _on_window_button_press(self, _widget, event) -> bool:
+        # Ignore double-click — WMs interpret it as maximize/shade toggle,
+        # which shrinks the window and prevents _resize_to_content from
+        # expanding it back.
+        if event.type == Gdk.EventType._2BUTTON_PRESS:
+            return True
         if event.button == 1:
             self.begin_move_drag(1, int(event.x_root), int(event.y_root), int(event.time))
             return True
@@ -223,6 +231,8 @@ class LightWindow(Gtk.Window):
         return False
 
     def _on_handle_button_press(self, _widget, event) -> bool:
+        if event.type == Gdk.EventType._2BUTTON_PRESS:
+            return True
         if event.button == 3:
             self._show_main_menu(int(event.x_root), int(event.y_root))
             return True

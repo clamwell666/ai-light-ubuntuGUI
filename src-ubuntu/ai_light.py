@@ -21,6 +21,7 @@ from gi.repository import GLib, Gtk  # noqa: E402
 
 import aggregator as aggregator_mod  # noqa: E402
 import app_lock  # noqa: E402
+import claude_scanner  # noqa: E402
 import codex_watcher  # noqa: E402
 import config as config_mod  # noqa: E402
 import hook_installer  # noqa: E402
@@ -62,6 +63,14 @@ def main() -> int:
         hook_installer.install_hook_shim()
     except Exception as error:
         append_log(f"failed to install hook shim: {error}")
+
+    # Scan for Claude Code sessions that started before AI Light —
+    # their session-start hook events were lost, so we discover them
+    # from their JSONL session logs instead.
+    try:
+        claude_scanner.register_existing_sessions(aggregator)
+    except Exception as error:
+        append_log(f"failed to scan existing Claude sessions: {error}")
 
     import window as window_mod
 
