@@ -9,21 +9,6 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
 from gi.repository import Gdk, GLib, Gtk
 
-# Try to import GtkLayerShell for Wayland layer-surface support.
-# On Wayland, set_keep_above() is silently ignored by the compositor.
-# GtkLayerShell provides the native wlr-layer-shell-unstable-v1 protocol
-# which allows windows to be placed on the "overlay" layer — above all
-# normal application windows.  On X11, we fall back to set_keep_above().
-_HAS_LAYER_SHELL = False
-_LayerShell = None
-try:
-    gi.require_version("GtkLayerShell", "0.1")
-    from gi.repository import GtkLayerShell as _LayerShell
-    _HAS_LAYER_SHELL = True
-except (ValueError, ImportError):
-    pass
-
-
 import actions
 import config as config_mod
 from model import STATUS_NAMES, Status, Tool, composite_key
@@ -42,11 +27,6 @@ def load_css() -> None:
         provider,
         Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
     )
-
-
-def _is_wayland() -> bool:
-    """Check whether the current session is running on Wayland."""
-    return os.environ.get("XDG_SESSION_TYPE") == "wayland"
 
 
 class LightWindow(Gtk.Window):
@@ -68,24 +48,13 @@ class LightWindow(Gtk.Window):
         self.get_style_context().add_class("transparent")
         self._enable_transparency()
 
-        # --- always-on-top ----------------------------------------------------
         cfg = config_mod.load_app_config()
         self.set_opacity(cfg.window_opacity)
         self._always_on_top = cfg.always_on_top
-
-        # On Wayland, use GtkLayerShell to anchor the window on the overlay
-        # layer (above all normal app windows).  On X11, use the standard
-        # set_keep_above() which manipulates _NET_WM_STATE_ABOVE.
-        self._use_layer_shell = _HAS_LAYER_SHELL and _is_wayland()
-        if self._use_layer_shell:
-            self._init_layer_shell()
-        else:
-            self.set_keep_above(self._always_on_top)
+        self.set_keep_above(self._always_on_top)
 
         # Restore saved window position (if non-default).
-        # Note: on Wayland with layer-shell, the compositor controls
-        # positioning via anchors/margins, so we skip move() there.
-        if not self._use_layer_shell and (cfg.window_x != 100 or cfg.window_y != 100):
+        if cfg.window_x != 100 or cfg.window_y != 100:
             self.move(cfg.window_x, cfg.window_y)
 
         self.lights_container = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
@@ -102,47 +71,12 @@ class LightWindow(Gtk.Window):
         self.show_all()
         self._refresh()
 
-    # --- layer-shell (Wayland) ------------------------------------------------
-    def _init_layer_shell(self) -> None:
-        """Configure this window as a Wayland layer-shell surface.
-
-        Places it on the overlay layer (above normal windows), anchors
-        it to the top-left corner, and sets an exclusive zone of 0 so
-        other windows are not pushed aside.  The user can toggle it
-        between the overlay and normal (top) layer.
-        """
-        _LayerShell.init_for_window(self)
-        # Start on the overlay layer (above all normal windows).
-        _LayerShell.set_layer(self, _LayerShell.Layer.OVERLAY)
-        # Anchor to top-left so the window stays near the corner.
-        _LayerShell.set_anchor(self, _LayerShell.LayerShellEdge.TOP, True)
-        _LayerShell.set_anchor(self, _LayerShell.LayerShellEdge.LEFT, True)
-        # No exclusive zone — other windows should not be displaced.
-        _LayerShell.set_exclusive_zone(self, 0)
-        # Allow the compositor to skip the interactivity constraint so
-        # the window receives input even when other apps are focused.
-        _LayerShell.set_keyboard_mode(
-            self, _LayerShell.KeyboardMode.ON_DEMAND
-        )
-
-    def _apply_layer_shell_top(self, enabled: bool) -> None:
-        """Switch the Wayland layer between OVERLAY (on top) and TOP
-        (normal stacking, still above regular windows but below overlays
-        like notification banners).
-        """
-        if enabled:
-            _LayerShell.set_layer(self, _LayerShell.Layer.OVERLAY)
-        else:
-            _LayerShell.set_layer(self, _LayerShell.Layer.TOP)
-
-    # --- transparency ---------------------------------------------------------
     def _enable_transparency(self) -> None:
         screen = self.get_screen()
         visual = screen.get_rgba_visual()
         if visual is not None:
             self.set_visual(visual)
 
-    # --- settings -------------------------------------------------------------
     def set_window_opacity(self, opacity: float) -> None:
         self.set_opacity(opacity)
         cfg = config_mod.load_app_config()
@@ -151,10 +85,7 @@ class LightWindow(Gtk.Window):
 
     def toggle_always_on_top(self, enabled: bool) -> None:
         self._always_on_top = enabled
-        if self._use_layer_shell:
-            self._apply_layer_shell_top(enabled)
-        else:
-            self.set_keep_above(enabled)
+        self.set_keep_above(enabled)
         cfg = config_mod.load_app_config()
         cfg.always_on_top = enabled
         config_mod.save_app_config(cfg)
@@ -167,13 +98,10 @@ class LightWindow(Gtk.Window):
 
     def _on_configure_event(self, _widget, event) -> None:
         """Save window position so it is restored on next launch."""
-        # On Wayland with layer-shell, position is compositor-managed;
-        # only save when using X11.
-        if not self._use_layer_shell:
-            cfg = config_mod.load_app_config()
-            cfg.window_x = event.x
-            cfg.window_y = event.y
-            config_mod.save_app_config(cfg)
+        cfg = config_mod.load_app_config()
+        cfg.window_x = event.x
+        cfg.window_y = event.y
+        config_mod.save_app_config(cfg)
 
     # --- rendering ----------------------------------------------------------
     def schedule_refresh(self) -> None:
@@ -209,9 +137,7 @@ class LightWindow(Gtk.Window):
     def _resize_to_content(self) -> None:
         # Unmaximize first — if the WM put the window in a shaded/maximized
         # state (e.g. from a double-click), resize alone won't expand it.
-        # On Wayland with layer-shell, unmaximize is a no-op (no WM state).
-        if not self._use_layer_shell:
-            self.unmaximize()
+        self.unmaximize()
         self.lights_container.show_all()
         min_rect, nat_rect = self.lights_container.get_preferred_size()
         width = max(64, nat_rect.width + 8)
@@ -219,9 +145,7 @@ class LightWindow(Gtk.Window):
         self.resize(width, height)
         # Re-apply keep_above after resize — some WMs (Mutter, KWin) reset
         # _NET_WM_STATE_ABOVE on configure events triggered by resize.
-        # On Wayland, layer-shell layer is persistent; no re-apply needed.
-        if not self._use_layer_shell:
-            self.set_keep_above(self._always_on_top)
+        self.set_keep_above(self._always_on_top)
 
     # --- widgets ------------------------------------------------------------
     def _create_app_handle(self) -> Gtk.Widget:

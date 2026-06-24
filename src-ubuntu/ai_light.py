@@ -13,6 +13,14 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
+# On Wayland sessions (XDG_SESSION_TYPE=wayland), GTK's set_keep_above() is
+# silently ignored \u2014 GNOME Mutter does not implement wlr-layer-shell, so the
+# EWMH _NET_WM_STATE_ABOVE hint has no effect.  Force the X11 backend via
+# XWayland so that set_keep_above() works through the X11 protocol stack.
+# This must happen BEFORE any gi/GTK import.
+if os.environ.get("XDG_SESSION_TYPE") == "wayland" and "GDK_BACKEND" not in os.environ:
+    os.environ["GDK_BACKEND"] = "x11"
+
 import gi  # noqa: E402
 
 gi.require_version("Gtk", "3.0")
