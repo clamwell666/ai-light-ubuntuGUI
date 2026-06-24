@@ -1,7 +1,0 @@
-{
-  "bundle": {
-    "resources": {
-      "../target/release/ai-light-hook.exe": "ai-light-hook.exe"
-    }
-  }
-}

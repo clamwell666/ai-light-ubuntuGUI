@@ -154,7 +154,10 @@ def _update_inactive(aggregator, watched: WatchedRollout, path: str) -> None:
         mtime = os.path.getmtime(path)
     except OSError:
         return
-    age = time.monotonic() - mtime  # rough proxy for file quiet time
+    # os.path.getmtime returns wall-clock seconds; use time.time() so
+    # both sides share the same epoch (time.monotonic() uses a different
+    # reference point and would give a meaningless delta).
+    age = time.time() - mtime
     if watched.last_status == Status.Working and age >= STALE_WORKING_AFTER:
         aggregator.update_session_status(meta.session_id, Status.Error)
         watched.last_status = Status.Error

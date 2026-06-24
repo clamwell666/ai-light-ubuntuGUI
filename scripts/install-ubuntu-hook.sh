@@ -9,11 +9,9 @@ Usage:
   AI_LIGHT_URL=http://WINDOWS_IP:17321 ./scripts/install-ubuntu-hook.sh
   ./scripts/install-ubuntu-hook.sh http://WINDOWS_IP:17321
 
-Optional:
-  AI_LIGHT_HOOK_SOURCE=/path/to/ai-light-hook ./scripts/install-ubuntu-hook.sh http://WINDOWS_IP:17321
-
-This installs only ~/.ai_light/bin/ai-light-hook and configures Claude Code
-hooks in ~/.claude/settings.json. It does not install or launch the AI Light GUI.
+This installs only ~/.ai_light/bin/ai-light-hook (Python shim) and configures
+Claude Code hooks in ~/.claude/settings.json. It does not install or launch
+the AI Light GUI.
 USAGE
 }
 
@@ -34,19 +32,7 @@ install_dir="${HOME}/.ai_light/bin"
 hook_dest="${install_dir}/ai-light-hook"
 settings_path="${HOME}/.claude/settings.json"
 
-hook_source="${AI_LIGHT_HOOK_SOURCE:-}"
-if [[ -z "$hook_source" ]]; then
-  if [[ -x "${repo_root}/target/release/ai-light-hook" ]]; then
-    hook_source="${repo_root}/target/release/ai-light-hook"
-  elif command -v cargo >/dev/null 2>&1; then
-    (cd "$repo_root" && cargo build -p ai-light-hook --release)
-    hook_source="${repo_root}/target/release/ai-light-hook"
-  else
-    echo "error: ai-light-hook not found and cargo is not available" >&2
-    echo "set AI_LIGHT_HOOK_SOURCE=/path/to/ai-light-hook or install Rust/Cargo" >&2
-    exit 1
-  fi
-fi
+hook_source="${repo_root}/src-ubuntu/ai_light_hook"
 
 if [[ ! -f "$hook_source" ]]; then
   echo "error: hook source not found: $hook_source" >&2
@@ -104,11 +90,9 @@ command_prefix = f"AI_LIGHT_URL={shlex.quote(ai_light_url)} {shlex.quote(hook_pa
 def contains_ai_light_hook(entry):
     if not isinstance(entry, dict):
         return False
-
     commands = entry.get("hooks", [])
     if not isinstance(commands, list):
         return False
-
     return any(
         "ai-light-hook" in str(command.get("command", ""))
         for command in commands

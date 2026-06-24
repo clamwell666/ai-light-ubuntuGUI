@@ -1,17 +1,10 @@
-"""Session/light aggregation — Python port of ``src-tauri/src/aggregator.rs``.
-
-Thread-safe (a single ``threading.Lock`` guards all state, mirroring the Rust
-``RwLock``). Aggregation picks the max-severity status across sessions. Lights
-preserve insertion order. An ``on_change`` callback is fired on every mutation
-so the GUI can refresh.
-"""
 from __future__ import annotations
 
 import threading
 import time
 from typing import Callable, Dict, List, Optional
 
-from model import LightState, SessionRef, Status, Tool
+from model import LightState, SessionRef, Status, Tool, composite_key
 
 
 class StateAggregator:
@@ -28,7 +21,6 @@ class StateAggregator:
             self._on_change = callback
 
     def _notify(self) -> None:
-        # Snapshot callback under lock, invoke outside to avoid reentrancy.
         with self._lock:
             callback = self._on_change
         if callback:
@@ -41,27 +33,28 @@ class StateAggregator:
         with self._lock:
             self._remove_existing_session(session_id)
             project_id, project_label = identify_project(cwd)
-            if project_id not in self._lights:
-                self._light_order.append(project_id)
-            light = self._lights.get(project_id)
+            key = composite_key(project_id, tool)
+            if key not in self._lights:
+                self._light_order.append(key)
+            light = self._lights.get(key)
             if light is None:
-                light = LightState(project_id, project_label)
-                self._lights[project_id] = light
+                light = LightState(project_id, project_label, tool)
+                self._lights[key] = light
             light.sessions.append(
                 SessionRef(session_id=session_id, tool=tool, status=status)
             )
             light.last_event_at = time.monotonic()
             light.aggregate_status()
-            self._session_to_project[session_id] = project_id
+            self._session_to_project[session_id] = key
         self._notify()
 
     def update_session_status(self, session_id: str, new_status: Status) -> None:
         changed = False
         with self._lock:
-            project_id = self._session_to_project.get(session_id)
-            if project_id is None:
+            key = self._session_to_project.get(session_id)
+            if key is None:
                 return
-            light = self._lights.get(project_id)
+            light = self._lights.get(key)
             if light is None:
                 return
             for session in light.sessions:
@@ -76,10 +69,10 @@ class StateAggregator:
 
     def session_status(self, session_id: str) -> Optional[Status]:
         with self._lock:
-            project_id = self._session_to_project.get(session_id)
-            if project_id is None:
+            key = self._session_to_project.get(session_id)
+            if key is None:
                 return None
-            light = self._lights.get(project_id)
+            light = self._lights.get(key)
             if light is None:
                 return None
             for session in light.sessions:
@@ -90,58 +83,46 @@ class StateAggregator:
     def remove_session(self, session_id: str) -> None:
         changed = False
         with self._lock:
-            project_id = self._session_to_project.pop(session_id, None)
-            if project_id is None:
+            key = self._session_to_project.pop(session_id, None)
+            if key is None:
                 return
-            light = self._lights.get(project_id)
+            light = self._lights.get(key)
             if light is not None:
                 light.sessions = [s for s in light.sessions if s.session_id != session_id]
                 light.last_event_at = time.monotonic()
                 if not light.sessions:
-                    self._remove_light_by_project(project_id)
+                    self._remove_light_by_key(key)
                 else:
                     light.aggregate_status()
             changed = True
         if changed:
             self._notify()
 
-    def confirm_light(self, project_id: str) -> None:
+    def confirm_light(self, key: str) -> None:
         changed = False
         with self._lock:
-            light = self._lights.get(project_id)
+            light = self._lights.get(key)
             if light is None:
                 return
-            if light.status == Status.Done:
-                self._remove_light_by_project(project_id)
+            if light.status in (Status.Done, Status.Error):
+                self._remove_light_by_key(key)
                 changed = True
-            elif light.status == Status.Error:
-                if not light.sessions:
-                    self._remove_light_by_project(project_id)
-                    changed = True
-                else:
-                    for session in light.sessions:
-                        if session.status == Status.Error:
-                            session.status = Status.Idle
-                            changed = True
-                    if changed:
-                        light.last_event_at = time.monotonic()
-                        light.aggregate_status()
         if changed:
             self._notify()
 
-    def remove_light(self, project_id: str) -> None:
+    def remove_light(self, key: str) -> None:
         with self._lock:
-            removed = self._remove_light_by_project(project_id)
+            removed = self._remove_light_by_key(key)
         if removed:
             self._notify()
 
     def set_last_tool_call(self, session_id: str, tool_call: str) -> None:
         changed = False
         with self._lock:
-            project_id = self._session_to_project.get(session_id)
-            if project_id is None:
+            key = self._session_to_project.get(session_id)
+            if key is None:
                 return
-            light = self._lights.get(project_id)
+            light = self._lights.get(key)
             if light is None:
                 return
             light.last_tool_call = tool_call
@@ -152,33 +133,31 @@ class StateAggregator:
 
     def get_lights(self) -> List[LightState]:
         with self._lock:
-            return [self._lights[pid] for pid in self._light_order if pid in self._lights]
+            return [self._lights[key] for key in self._light_order if key in self._lights]
 
     def get_lights_json(self) -> List[dict]:
         with self._lock:
-            return [self._lights[pid].to_json() for pid in self._light_order if pid in self._lights]
+            return [self._lights[key].to_json() for key in self._light_order if key in self._lights]
 
     # --- internals ----------------------------------------------------------
     def _remove_existing_session(self, session_id: str) -> None:
-        """Caller must hold the lock."""
-        project_id = self._session_to_project.pop(session_id, None)
-        if project_id is None:
+        key = self._session_to_project.pop(session_id, None)
+        if key is None:
             return
-        light = self._lights.get(project_id)
+        light = self._lights.get(key)
         if light is None:
             return
         light.sessions = [s for s in light.sessions if s.session_id != session_id]
         if not light.sessions:
-            self._remove_light_by_project(project_id)
+            self._remove_light_by_key(key)
         else:
             light.aggregate_status()
 
-    def _remove_light_by_project(self, project_id: str) -> bool:
-        """Caller must hold the lock. Returns True if a light was removed."""
-        light = self._lights.pop(project_id, None)
+    def _remove_light_by_key(self, key: str) -> bool:
+        light = self._lights.pop(key, None)
         if light is None:
             return False
         for session in light.sessions:
             self._session_to_project.pop(session.session_id, None)
-        self._light_order = [p for p in self._light_order if p != project_id]
+        self._light_order = [k for k in self._light_order if k != key]
         return True

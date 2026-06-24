@@ -1,9 +1,3 @@
-"""Configuration & runtime paths — Python port of ``src-tauri/src/config.rs``.
-
-Byte-compatible with the Rust app: the same ``config.json`` / ``runtime.json``
-files are read and written, so the Ubuntu GUI and the Tauri GUI coexist on the
-same ``~/.ai_light`` directory.
-"""
 from __future__ import annotations
 
 import json
@@ -52,6 +46,8 @@ class AppConfig:
     hooks_installed: bool = False
     http_bind: str = "127.0.0.1"
     http_port: Optional[int] = None
+    window_opacity: float = 1.0
+    always_on_top: bool = True
 
     def to_json(self) -> dict:
         return asdict(self)
@@ -66,7 +62,7 @@ class RuntimeConfig:
 
 
 def _strip_bom(text: str) -> str:
-    return text[1:] if text.startswith("﻿") else text
+    return text[1:] if text.startswith("\ufeff") else text
 
 
 def load_app_config() -> AppConfig:
@@ -82,7 +78,6 @@ def load_app_config() -> AppConfig:
         return AppConfig()
     if not isinstance(data, dict):
         return AppConfig()
-    # Tolerant load: pick known keys with defaults.
     return AppConfig(
         window_x=int(data.get("window_x", 100)),
         window_y=int(data.get("window_y", 100)),
@@ -90,6 +85,8 @@ def load_app_config() -> AppConfig:
         hooks_installed=bool(data.get("hooks_installed", False)),
         http_bind=str(data.get("http_bind", "127.0.0.1")),
         http_port=data.get("http_port"),
+        window_opacity=float(data.get("window_opacity", 1.0)),
+        always_on_top=bool(data.get("always_on_top", True)),
     )
 
 

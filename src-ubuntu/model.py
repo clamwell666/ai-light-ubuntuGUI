@@ -1,8 +1,3 @@
-"""Core data types — Python port of ``src-tauri/src/types.rs``.
-
-Kept compatible with the JSON shapes the Rust app emits over IPC and HTTP so the
-Ubuntu GUI and the Tauri GUI can share the same aggregator state format.
-"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -12,8 +7,6 @@ import time
 
 
 class Status(IntEnum):
-    """Light status. Order matters: aggregation picks the max severity."""
-
     Idle = 0
     Done = 1
     Working = 2
@@ -32,6 +25,18 @@ class Tool(IntEnum):
             Tool.Codex: "CX",
             Tool.Opencode: "OC",
         }[self]
+
+    @property
+    def label(self) -> str:
+        return {
+            Tool.ClaudeCode: "Claude Code",
+            Tool.Codex: "Codex",
+            Tool.Opencode: "opencode",
+        }[self]
+
+
+def composite_key(project_id: str, tool: Tool) -> str:
+    return f"{project_id}|{tool.value}"
 
 
 @dataclass
@@ -53,18 +58,24 @@ class SessionRef:
 class LightState:
     project_id: str
     project_label: str
+    tool: Tool
     status: Status = Status.Idle
     sessions: List[SessionRef] = field(default_factory=list)
     last_event_at: float = field(default_factory=time.monotonic)
     last_tool_call: Optional[str] = None
 
-    def __init__(self, project_id: str, project_label: str) -> None:
+    def __init__(self, project_id: str, project_label: str, tool: Tool) -> None:
         self.project_id = project_id
         self.project_label = project_label
+        self.tool = tool
         self.status = Status.Idle
         self.sessions: List[SessionRef] = []
         self.last_event_at = time.monotonic()
         self.last_tool_call = None
+
+    @property
+    def key(self) -> str:
+        return composite_key(self.project_id, self.tool)
 
     def aggregate_status(self) -> None:
         if self.sessions:
@@ -76,6 +87,7 @@ class LightState:
         return {
             "project_id": self.project_id,
             "project_label": self.project_label,
+            "tool": int(self.tool),
             "status": int(self.status),
             "sessions": [session.to_json() for session in self.sessions],
             "last_tool_call": self.last_tool_call,

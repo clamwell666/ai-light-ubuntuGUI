@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.2.0] - 2026-06-25
+
+### Changed
+
+- Removed all Rust/Tauri code (`src-tauri/`, `src-hook/`, `Cargo.toml`).
+- Project now exclusively uses the Python + GTK3 Ubuntu GUI (`src-ubuntu/`).
+- Each AI tool (Claude Code, Codex, opencode) now gets its own independent
+  traffic light row per project, with distinct tool badges (CC/CX/OC).
+- Aggregator uses composite keys `(project_id, tool)` so each tool's status
+  is tracked and displayed independently.
+
+### Added
+
+- Settings window: window opacity slider (10% - 100%, real-time).
+- Settings window: always-on-top toggle (real-time).
+- Both settings persist to `~/.ai_light/config.json`.
+
+### Removed
+
+- `docs/BUILDING.md`, `docs/UBUNTU_HOOK_ONLY.md`, `docs/PROGRESS.md`,
+  `docs/validation/`, `docs/superpowers/`.
+
 ## [0.1.0] - 2026-05-31
 
 ### Added
@@ -19,9 +41,3 @@
 - Optional remote hook mode with `AI_LIGHT_URL` for sending events from SSH/Linux clients to a Windows host.
 - Configurable HTTP bind address and fixed HTTP port for LAN-based monitoring.
 - Ubuntu hook-only installer script for configuring Claude Code forwarding without launching a GUI.
-
-### Known Limitations
-
-- Windows MSI/NSIS packaging is verified via the npm Tauri CLI; a global Cargo-installed Tauri CLI is not installed.
-- macOS GUI packaging config exists but still needs validation on a native macOS runner or real machine.
-- Ubuntu/Linux is supported as a hook-only remote client, not as a GUI package.

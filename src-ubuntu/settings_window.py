@@ -1,9 +1,3 @@
-"""Settings window — GTK3 port of ``src/settings.html`` + ``src/settings.js``.
-
-Lets the user configure the HTTP bind/port and install/remove Claude Code
-integration. Hides on close (not destroyed) so it can be reopened, mirroring
-the Tauri settings window behaviour.
-"""
 from __future__ import annotations
 
 import os
@@ -19,15 +13,46 @@ import hook_installer
 
 
 class SettingsWindow(Gtk.Window):
-    def __init__(self, aggregator) -> None:
+    def __init__(self, aggregator, light_window=None) -> None:
         super().__init__(type=Gtk.WindowType.TOPLEVEL)
         self.aggregator = aggregator
+        self._light_window = light_window
         self.set_title("AI Light Settings")
-        self.set_default_size(480, 460)
+        self.set_default_size(480, 520)
         self.set_border_width(12)
 
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         self.add(outer)
+
+        # --- Window section --------------------------------------------------
+        window_frame = Gtk.Frame(label="Window")
+        window_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        window_box.set_border_width(8)
+        window_frame.add(window_box)
+
+        # Always on top
+        cfg = config_mod.load_app_config()
+        aot_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.always_on_top_check = Gtk.CheckButton(label="Always on top")
+        self.always_on_top_check.set_active(cfg.always_on_top)
+        self.always_on_top_check.connect("toggled", self._on_always_on_top_toggled)
+        aot_row.pack_start(self.always_on_top_check, expand=False, fill=False, padding=0)
+        window_box.pack_start(aot_row, expand=False, fill=False, padding=0)
+
+        # Opacity
+        opacity_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        opacity_label = Gtk.Label(label="Opacity:")
+        opacity_row.pack_start(opacity_label, expand=False, fill=False, padding=0)
+        self.opacity_scale = Gtk.HScale.new_with_range(0.1, 1.0, 0.05)
+        self.opacity_scale.set_value(cfg.window_opacity)
+        self.opacity_scale.set_size_request(200, -1)
+        self.opacity_scale.connect("value-changed", self._on_opacity_changed)
+        opacity_row.pack_start(self.opacity_scale, expand=True, fill=True, padding=0)
+        self.opacity_value_label = Gtk.Label(label=f"{cfg.window_opacity:.0%}")
+        opacity_row.pack_start(self.opacity_value_label, expand=False, fill=False, padding=0)
+        window_box.pack_start(opacity_row, expand=False, fill=False, padding=0)
+
+        outer.pack_start(window_frame, expand=False, fill=False, padding=0)
 
         # --- HTTP server section ------------------------------------------------
         server_frame = Gtk.Frame(label="HTTP server")
@@ -35,7 +60,6 @@ class SettingsWindow(Gtk.Window):
         server_box.set_border_width(8)
         server_frame.add(server_box)
 
-        cfg = config_mod.load_app_config()
         grid = Gtk.Grid(column_spacing=8, row_spacing=8)
         grid.attach(Gtk.Label(label="Bind address:"), 0, 0, 1, 1)
         self.bind_entry = Gtk.Entry()
@@ -89,12 +113,15 @@ class SettingsWindow(Gtk.Window):
 
         # --- opencode note ------------------------------------------------------
         note = Gtk.Label(label="opencode is monitored automatically via its SQLite "
-                              "session log — no integration install needed.")
+                              "session log \u2014 no integration install needed.")
         note.set_line_wrap(True)
         note.set_xalign(0)
         outer.pack_start(note, expand=False, fill=False, padding=0)
 
         self.connect("delete-event", self._on_delete)
+
+    def set_light_window(self, light_window) -> None:
+        self._light_window = light_window
 
     def show_settings(self) -> None:
         cfg = config_mod.load_app_config()
@@ -103,20 +130,34 @@ class SettingsWindow(Gtk.Window):
         runtime = config_mod.load_runtime_config()
         port_text = str(runtime.http_port) if runtime else "(not running)"
         self.runtime_label.set_text(f"Listening on: {cfg.http_bind}:{port_text}")
+        self.always_on_top_check.set_active(cfg.always_on_top)
+        self.opacity_scale.set_value(cfg.window_opacity)
+        self.opacity_value_label.set_text(f"{cfg.window_opacity:.0%}")
         self._refresh_hook_status()
         self.show_all()
         self.present()
 
     def _on_delete(self, *_args) -> bool:
         self.hide()
-        return True  # prevent destruction
+        return True
+
+    def _on_always_on_top_toggled(self, checkbutton) -> None:
+        enabled = checkbutton.get_active()
+        if self._light_window is not None:
+            self._light_window.toggle_always_on_top(enabled)
+
+    def _on_opacity_changed(self, scale) -> None:
+        opacity = scale.get_value()
+        self.opacity_value_label.set_text(f"{opacity:.0%}")
+        if self._light_window is not None:
+            self._light_window.set_window_opacity(opacity)
 
     def _on_save(self, *_args) -> None:
         bind = self.bind_entry.get_text().strip()
         port_text = self.port_entry.get_text().strip()
         try:
             import ipaddress
-            ipaddress.ip_address(bind)  # validates
+            ipaddress.ip_address(bind)
         except ValueError:
             self._alert("Bind must be an IP address, e.g. 127.0.0.1 or 0.0.0.0")
             return
@@ -138,7 +179,7 @@ class SettingsWindow(Gtk.Window):
     def _on_install(self, *_args) -> None:
         try:
             hook_installer.install_hooks()
-        except Exception as error:  # noqa: BLE001 - surface to user
+        except Exception as error:
             self._alert(f"Install failed: {error}")
             return
         self._refresh_hook_status()
@@ -148,7 +189,7 @@ class SettingsWindow(Gtk.Window):
     def _on_remove(self, *_args) -> None:
         try:
             hook_installer.remove_hooks()
-        except Exception as error:  # noqa: BLE001 - surface to user
+        except Exception as error:
             self._alert(f"Remove failed: {error}")
             return
         self._refresh_hook_status()

@@ -2,65 +2,42 @@
 
 AI Light 是一个桌面红绿灯小组件，用来显示 AI 编程助手的当前状态。
 
-它会把 Claude Code 和 Codex 的会话按项目聚合成一组灯：
+它会显示 Claude Code、Codex 和 opencode 的会话状态，每个工具独立显示一个灯组：
 
 - 红灯：等待用户处理、权限请求、通知或异常状态。
 - 黄灯：AI 正在工作。
 - 绿灯：任务已完成。
 - 会话结束后，对应灯组会自动消失。
-- 可以直接下载安装使用：https://github.com/LeoKemp223/ai-light/releases
-  
-<img width="828" height="432" alt="PixPin_2026-06-01_00-49-45" src="https://github.com/user-attachments/assets/4a05b83f-82cf-46a8-b2ef-14828e7145f3" />
-
-当前定位是一个轻量的本地辅助工具：Windows/macOS 显示 GUI，Ubuntu/Linux 只作为远程 hook 转发端使用。
 
 ## 功能概览
 
 - 悬浮透明窗口，始终置顶。
-- 按项目显示灯组，项目名称显示在灯组顶部。
+- 每个 AI 工具独立显示灯组，带工具标识（CC/CX/OC）。
 - 支持 Claude Code hooks。
 - 支持 Codex 本地会话文件监听。
-- 支持 Windows 本机使用。
-- 支持 Windows 显示 GUI、Ubuntu SSH 端转发 Claude Code 状态。
+- 支持 opencode 自动监听。
+- Settings 中可调节窗口透明度。
+- Settings 中可切换窗口置顶。
 - 支持右键菜单打开 Settings、诊断信息、日志、项目路径等。
 - 支持安装/卸载 Claude Code 集成。
-<img width="828" height="324" alt="PixPin_2026-06-01_00-53-52" src="https://github.com/user-attachments/assets/73826e7e-843f-44b9-9fbf-23c2de309b55" />
-
-<img width="828" height="540" alt="ai_light" src="https://github.com/user-attachments/assets/5fd80385-0bb2-4c24-8492-be58adbc9354" />
 
 ## 平台支持
 
 | 平台 | 支持方式 |
 | --- | --- |
-| Windows | GUI + Claude Code hooks + Codex watching |
-| macOS | GUI 目标平台，打包仍需在 macOS 上验证 |
-| Ubuntu/Linux | 原生 Python GTK3 GUI（`src-ubuntu/`），支持 Claude Code hooks、Codex 监听、opencode 监听；也可作为 hook-only 转发端使用 |
+| Ubuntu/Linux | 原生 Python GTK3 GUI（`src-ubuntu/`），支持 Claude Code hooks、Codex 监听、opencode 监听 |
 
-> Ubuntu GUI 无需 Rust 工具链或 sudo，仅依赖 `python3-gi`（Ubuntu 自带）。详见 [Ubuntu GUI 指南](docs/UBUNTU_GUI.md)。
+无需 Rust 工具链或 sudo，仅依赖 `python3-gi`（Ubuntu 自带）。
 
-## 安装使用
+## 运行
 
-### Windows
-
-使用最新安装包：
-
-```text
-target/release/bundle/nsis/AI Light_0.1.0_x64-setup.exe
+```bash
+./scripts/run-ubuntu-gui.sh
+# 或
+python3 src-ubuntu/ai_light.py
 ```
 
-安装后启动 AI Light。首次启动会复制 hook helper 到：
-
-```text
-%USERPROFILE%\.ai_light\bin\ai-light-hook.exe
-```
-
-AI Light 会在本地启动 HTTP 接收服务，并写入运行时端口：
-
-```text
-%USERPROFILE%\.ai_light\runtime.json
-```
-
-### 配置 Claude Code
+## 配置 Claude Code
 
 右键 AI Light 小组件，打开：
 
@@ -68,282 +45,61 @@ AI Light 会在本地启动 HTTP 接收服务，并写入运行时端口：
 Settings -> Install Claude Integration
 ```
 
-这会把 AI Light hooks 合并到：
+这会把 AI Light hooks 合并到 `~/.claude/settings.json`。
 
-```text
-%USERPROFILE%\.claude\settings.json
-```
+安装后重启 Claude Code 或 VSCode 中的 Claude Code 会话。可以在 Claude Code 中输入 `/hooks` 确认 AI Light hooks 已被加载。
 
-写入格式使用 `command + args`，避免 Windows 路径在 bash/sh shell 中被反斜杠转义：
+## 配置 Codex
 
-```json
-{
-  "type": "command",
-  "command": "C:\\Users\\kemp\\.ai_light\\bin\\ai-light-hook.exe",
-  "args": ["prompt-submit"]
-}
-```
+Codex 无需手动安装 hooks，AI Light 会自动监听 `~/.codex/sessions`。
 
-安装后重启 Claude Code 或 VSCode 中的 Claude Code 会话。
+## opencode
 
-可以在 Claude Code 中输入：
-
-```text
-/hooks
-```
-
-确认 AI Light hooks 已被 Claude Code 加载。
-
-### 配置 Codex
-
-Codex 不需要手动安装 hooks。
-
-AI Light 会监听本机 Codex 会话文件：
-
-```text
-%USERPROFILE%\.codex\sessions
-```
-
-当 Codex 会话产生新的 rollout 事件时，小组件会自动更新对应项目的灯状态。
+opencode 无需安装，AI Light 会自动监听 `~/.local/share/opencode/opencode.db`。
 
 ## 常用操作
 
-右键 AI Light 小组件可以打开菜单：
-
-- Settings：配置监听地址、端口，以及安装/卸载 Claude Code 集成。
-- Diagnostics：查看运行时路径、hook 状态、当前灯数量等信息。
-- Open Project：打开项目目录。
-- Open Session Logs：打开 Claude Code session 日志目录。
-- Open App Log：打开 AI Light 应用日志。
-- Quit：退出应用。
+- 左键红灯/绿灯：确认并关闭/重置。
+- 右键 AI 图标：Settings / Diagnostics / Quit。
+- 右键灯组：Open / Copy Path / Diagnostics / Settings / Remove。
+- 拖拽窗口背景：移动窗口。
 
 ## Settings 配置
 
-AI Light 配置文件位于：
+配置文件位于 `~/.ai_light/config.json`。
 
-```text
-%USERPROFILE%\.ai_light\config.json
-```
-
-默认只监听本机：
-
-```json
-{
-  "http_bind": "127.0.0.1",
-  "http_port": null
-}
-```
-
-如果要让 Ubuntu SSH 端转发到 Windows，需要改为局域网监听和固定端口：
-
-```json
-{
-  "http_bind": "0.0.0.0",
-  "http_port": 17321
-}
-```
-
-修改后需要重启 AI Light。
-
-## Ubuntu SSH 远程使用
-
-典型场景：
-
-```text
-Windows 运行 AI Light GUI
-Ubuntu 通过 SSH 运行 Claude Code
-Ubuntu hook -> Windows AI Light -> Windows 桌面显示红绿灯
-```
-
-Windows 侧先设置：
-
-```json
-{
-  "http_bind": "0.0.0.0",
-  "http_port": 17321
-}
-```
-
-然后确认 Windows 防火墙允许 Ubuntu 访问该端口。
-
-Ubuntu 侧在仓库目录执行：
-
-```bash
-./scripts/install-ubuntu-hook.sh http://WINDOWS_IP:17321
-```
-
-例如：
-
-```bash
-./scripts/install-ubuntu-hook.sh http://192.168.1.10:17321
-```
-
-Ubuntu 不会安装 GUI，只会安装：
-
-```text
-~/.ai_light/bin/ai-light-hook
-```
-
-并把 Claude Code hooks 写入：
-
-```text
-~/.claude/settings.json
-```
-
-更多细节见：
-
-- [Ubuntu Hook-Only Forwarding](docs/UBUNTU_HOOK_ONLY.md)
-
-## 验证
-
-### 验证 AI Light 服务
-
-PowerShell：
-
-```powershell
-$runtime = Get-Content "$env:USERPROFILE\.ai_light\runtime.json" | ConvertFrom-Json
-Invoke-WebRequest -UseBasicParsing "http://127.0.0.1:$($runtime.http_port)/health" |
-  Select-Object -ExpandProperty Content
-```
-
-期望输出：
-
-```text
-ok
-```
-
-### 手动验证 Claude hook
-
-PowerShell：
-
-```powershell
-New-Item -ItemType Directory -Force C:\Temp\ai-light-test | Out-Null
-
-'{"session_id":"manual-claude-test","cwd":"C:\\Temp\\ai-light-test"}' |
-  & "$env:USERPROFILE\.ai_light\bin\ai-light-hook.exe" session-start
-
-'{"session_id":"manual-claude-test"}' |
-  & "$env:USERPROFILE\.ai_light\bin\ai-light-hook.exe" prompt-submit
-```
-
-小组件应该出现对应项目灯组，并变为黄灯。
-
-### 查看 hook 日志
-
-hook helper 会写本地执行日志：
-
-```text
-%USERPROFILE%\.ai_light\hook.log
-```
-
-查看最近日志：
-
-```powershell
-Get-Content "$env:USERPROFILE\.ai_light\hook.log" -Tail 30
-```
-
-常见结果：
-
-- `sent ... status=200`：hook 已成功发送到 AI Light。
-- `failed ...`：hook 执行了，但发送失败，需要看 `target` 和 `error`。
-- `ignored: no target url`：AI Light 未运行，或 `runtime.json` 不存在。
-
-## 卸载
-
-Windows 应用本体可以通过系统的“应用和功能”卸载。
-
-Claude Code 集成可以在 AI Light 中执行：
-
-```text
-Settings -> Remove Claude Integration
-```
-
-这会移除 `~/.claude/settings.json` 中的 AI Light hooks，并删除：
-
-```text
-%USERPROFILE%\.ai_light\bin\ai-light-hook.exe
-```
-
-配置、日志等用户数据位于：
-
-```text
-%USERPROFILE%\.ai_light
-```
-
-如需完全清理，可手动删除该目录。
-
-## 开发
-
-安装依赖后，在仓库根目录运行：
-
-```powershell
-cargo test
-cargo build -p ai-light-hook --release
-npx @tauri-apps/cli@2.11.2 build
-```
-
-Windows 产物：
-
-```text
-target/release/ai-light.exe
-target/release/bundle/msi/AI Light_0.1.0_x64_en-US.msi
-target/release/bundle/nsis/AI Light_0.1.0_x64-setup.exe
-```
-
-开发模式：
-
-```powershell
-npx @tauri-apps/cli@2.11.2 dev
-```
-
-更多打包说明见：
-
-- [Build & Packaging Guide](docs/BUILDING.md)
+Settings 可设置：
+- 窗口透明度（滑块，实时生效）
+- 窗口置顶（开关，实时生效）
+- HTTP 监听地址和端口（需重启生效）
+- 安装/卸载 Claude Code 集成
 
 ## 项目结构
 
-```text
-src/
-  index.html              # 主悬浮窗口
-  app.js                  # 前端状态渲染和右键菜单
-  styles.css              # 主窗口样式
-  settings.html/js/css    # Settings 窗口
-  install-hooks.*         # 首次安装 Claude hooks 引导
-
-src-tauri/
-  src/main.rs             # Tauri app 入口
-  src/http_server.rs      # 本地 hook HTTP 接收服务
-  src/aggregator.rs       # 会话状态聚合
-  src/codex_watcher.rs    # Codex 文件监听
-  src/hook_installer.rs   # Claude hooks 安装/移除
-  src/ipc.rs              # Tauri IPC 命令
-  icons/                  # 应用图标
-
-src-hook/
-  src/main.rs             # ai-light-hook CLI
-
-src-ubuntu/                # Ubuntu 原生 Python+GTK3 GUI（与 Tauri 共享 ~/.ai_light，兼容 opencode）
-  ai_light.py              # 入口
-  config.py / model.py / aggregator.py / http_server.py / project.py
-  codex_watcher.py / opencode_watcher.py / hook_installer.py
-  ai_light_hook            # Python hook shim（替代 Rust 二进制）
-  window.py / settings_window.py / ui.css / actions.py
+```
+src-ubuntu/
+  ai_light.py            # 入口
+  config.py              # 配置和运行时路径
+  model.py               # Status / Tool / LightState 数据模型
+  aggregator.py          # 会话状态聚合
+  http_server.py         # HTTP hook 接收服务
+  project.py             # 项目标识（git root）
+  codex_watcher.py       # Codex 文件监听
+  opencode_watcher.py    # opencode DB 监听
+  hook_installer.py      # Claude hooks 安装/移除
+  ai_light_hook          # Python hook shim
+  app_lock.py            # 单实例锁
+  logging_util.py        # 日志
+  window.py              # 悬浮红绿灯窗口
+  settings_window.py     # 设置窗口
+  ui.css                 # 样式
+  actions.py             # 工具函数
 
 scripts/
-  install-ubuntu-hook.sh  # Ubuntu hook-only 安装脚本
-  run-ubuntu-gui.sh        # 启动 Ubuntu GUI
+  install-ubuntu-hook.sh # Ubuntu hook-only 安装脚本
+  run-ubuntu-gui.sh      # 启动脚本
 ```
 
 ## 文档
 
-- [Build & Packaging Guide](docs/BUILDING.md)
-- [Ubuntu Hook-Only Forwarding](docs/UBUNTU_HOOK_ONLY.md)
 - [Ubuntu GUI 指南](docs/UBUNTU_GUI.md)
-- [Design Spec](docs/superpowers/specs/2026-05-30-ai-light-design.md)
-- [Implementation Plan](docs/superpowers/plans/2026-05-30-ai-light-implementation.md)
-
-
-感谢 LinuxDo 社区的支持！
-[![LinuxDo](https://img.shields.io/badge/LinuxDo-社区支持-blue)](https://linux.do/)
-
-

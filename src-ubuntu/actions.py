@@ -1,9 +1,3 @@
-"""Shared UI helpers — open paths, clipboard, diagnostics text.
-
-Mirrors the right-click menu actions and the Diagnostics payload from
-``src-tauri/src/ipc.rs`` (plus an ``opencode_db_path`` field for the Ubuntu
-opencode watcher).
-"""
 from __future__ import annotations
 
 import os
@@ -20,7 +14,6 @@ def home_dir() -> Optional[str]:
 
 
 def open_path(path: str) -> None:
-    """Open a path in the platform's default file manager / app."""
     opener = _platform_opener()
     if opener:
         try:
@@ -39,7 +32,6 @@ def _platform_opener() -> Optional[str]:
 
 def sys_platform() -> str:
     import sys
-
     return sys.platform
 
 
@@ -76,6 +68,7 @@ def opencode_db_path() -> str:
 def build_diagnostics_text(aggregator) -> str:
     log_path = config_mod.get_log_path()
     hook_binary_path = hook_installer.get_hook_binary_path()
+    lights = aggregator.get_lights()
     lines = [
         "AI Light Diagnostics",
         "",
@@ -91,7 +84,16 @@ def build_diagnostics_text(aggregator) -> str:
         f"Hooks installed: {hook_installer.check_hooks_installed()}",
         f"Hook binary exists: {os.path.exists(hook_binary_path)}",
         f"Runtime exists: {os.path.exists(config_mod.get_runtime_path())}",
-        f"Light count: {len(aggregator.get_lights())}",
+        f"Light count: {len(lights)}",
+        "",
+        "Active lights:",
+    ]
+    for light in lights:
+        lines.append(
+            f"  {light.project_label} ({light.tool.badge}): "
+            f"{light.status.name}"
+        )
+    lines += [
         "",
         "Recent log:",
         _recent_log(log_path) or "(empty)",

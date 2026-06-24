@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""AI Light — Ubuntu GTK3 GUI entry point.
+"""AI Light \u2014 Ubuntu GTK3 GUI entry point.
 
 Boots the same core services as the Tauri app (HTTP hook receiver, Codex
 watcher) plus an opencode SQLite watcher, then runs the floating GTK3 window.
@@ -9,7 +9,6 @@ Wire-compatible with the Rust app: shares ``~/.ai_light/config.json``,
 import os
 import sys
 
-# Make sibling modules importable when run as `python3 src-ubuntu/ai_light.py`.
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
@@ -31,7 +30,6 @@ from logging_util import append_log  # noqa: E402
 
 
 def main() -> int:
-    # Single instance: if a live instance is already serving /health, exit.
     if http_server.existing_instance_is_healthy():
         append_log("another healthy AI Light instance is running; exiting")
         return 0
@@ -52,29 +50,32 @@ def main() -> int:
 
     try:
         codex_watcher.start_codex_watcher(aggregator)
-    except Exception as error:  # noqa: BLE001
+    except Exception as error:
         append_log(f"failed to start codex watcher: {error}")
 
     try:
         opencode_watcher.start_opencode_watcher(aggregator)
-    except Exception as error:  # noqa: BLE001
+    except Exception as error:
         append_log(f"failed to start opencode watcher: {error}")
 
-    # Copy the Python hook shim into place if no hook binary exists yet, so
-    # the Settings → Install Claude Integration flow works out of the box.
     try:
         hook_installer.install_hook_shim()
-    except Exception as error:  # noqa: BLE001
+    except Exception as error:
         append_log(f"failed to install hook shim: {error}")
 
-    # Defer importing GTK window until after services are up.
     import window as window_mod
 
     window_mod.load_css()
 
     from settings_window import SettingsWindow
 
-    settings_window = SettingsWindow(aggregator)
+    light_window = window_mod.LightWindow(
+        aggregator,
+        on_settings=lambda: None,
+        on_quit=lambda: Gtk.main_quit(),
+    )
+
+    settings_window = SettingsWindow(aggregator, light_window=light_window)
     settings_window.hide()
 
     def on_settings() -> None:
@@ -84,9 +85,8 @@ def main() -> int:
         append_log("quit requested")
         Gtk.main_quit()
 
-    light_window = window_mod.LightWindow(
-        aggregator, on_settings=on_settings, on_quit=on_quit
-    )
+    light_window._on_settings = on_settings
+    light_window._on_quit = on_quit
 
     aggregator.set_on_change(light_window.schedule_refresh)
     GLib.timeout_add_seconds(1, light_window.schedule_refresh)
