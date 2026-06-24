@@ -1,0 +1,68 @@
+/* AI Light — Ubuntu GTK3 styles. Mirrors the traffic-light look of src/styles.css. */
+
+window.transparent,
+window.transparent decoration {
+    background-color: transparent;
+    background-image: none;
+}
+
+#lights-container {
+    padding: 6px;
+}
+
+.app-handle {
+    color: #ffffff;
+    background-color: rgba(40, 40, 40, 0.85);
+    border-radius: 8px;
+    padding: 6px 8px;
+    font-weight: bold;
+    min-width: 28px;
+}
+
+.project-row {
+    background-color: rgba(30, 30, 30, 0.78);
+    border-radius: 10px;
+    padding: 6px 8px;
+}
+
+.project-row.actionable {
+    background-color: rgba(40, 40, 40, 0.88);
+}
+
+.row-label {
+    color: #e6e6e6;
+    font-size: 11px;
+    font-weight: bold;
+}
+
+.tool-badge {
+    color: #9aa0a6;
+    font-size: 9px;
+    background-color: rgba(255,255,255,0.08);
+    border-radius: 4px;
+    padding: 0 4px;
+    min-width: 22px;
+}
+
+.lamp-housing {
+    padding: 2px 0;
+}
+
+.lamp {
+    min-width: 14px;
+    min-height: 14px;
+    border-radius: 50%;
+    margin: 1px;
+}
+
+.lamp.red { background-color: #4a1f1f; }
+.lamp.yellow { background-color: #4a3a14; }
+.lamp.green { background-color: #1f4a22; }
+
+.lamp.red.on { background-color: #ff3b30; box-shadow: 0 0 6px #ff3b30; }
+.lamp.yellow.on { background-color: #ffcc00; box-shadow: 0 0 6px #ffcc00; }
+.lamp.green.on { background-color: #34c759; box-shadow: 0 0 6px #34c759; }
+
+.menu-item {
+    padding: 4px 8px;
+}

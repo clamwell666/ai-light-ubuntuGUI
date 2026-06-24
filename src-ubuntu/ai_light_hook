@@ -1,0 +1,191 @@
+#!/usr/bin/env python3
+"""AI Light hook helper — Python port of ``src-hook/src/main.rs``.
+
+Drop-in replacement for the Rust ``ai-light-hook`` binary on Ubuntu. Invoked by
+Claude Code hooks as::
+
+    <command> <event-arg>     # JSON payload arrives on stdin
+
+It reads the runtime target from ``AI_LIGHT_URL`` (preferred) or
+``~/.ai_light/runtime.json``, POSTs a normalized event to ``/events``, and
+appends a line to ``~/.ai_light/hook.log``. Zero third-party dependencies
+(stdlib ``urllib`` only) so it runs in any Claude Code hook shell.
+"""
+import json
+import os
+import sys
+import time
+import urllib.request
+from urllib.error import URLError, HTTPError
+
+NORMALIZE = {
+    "SessionStart": "session-start",
+    "session_start": "session-start",
+    "sessionstart": "session-start",
+    "UserPromptSubmit": "prompt-submit",
+    "prompt_submit": "prompt-submit",
+    "user-prompt-submit": "prompt-submit",
+    "userpromptsubmit": "prompt-submit",
+    "PreToolUse": "pre-tool-use",
+    "pre_tool_use": "pre-tool-use",
+    "pretooluse": "pre-tool-use",
+    "PermissionRequest": "permission-request",
+    "permission_request": "permission-request",
+    "permissionrequest": "permission-request",
+    "PostToolUse": "post-tool-use",
+    "post_tool_use": "post-tool-use",
+    "posttooluse": "post-tool-use",
+    "Notification": "notification",
+    "notification": "notification",
+    "Stop": "stop",
+    "stop": "stop",
+    "SessionEnd": "session-end",
+    "session_end": "session-end",
+    "sessionend": "session-end",
+}
+
+
+def home_dir():
+    return os.environ.get("USERPROFILE") or os.environ.get("HOME")
+
+
+def _config_dir():
+    """Resolve the AI Light config dir, honoring AI_LIGHT_CONFIG_DIR.
+
+    Mirrors config.py so the shim and the GUI agree on runtime.json/hook.log
+    location in both production (~/.ai_light) and isolated test runs.
+    """
+    override = os.environ.get("AI_LIGHT_CONFIG_DIR")
+    if override:
+        return override
+    home = home_dir()
+    return os.path.join(home, ".ai_light") if home else None
+
+
+def runtime_config_path():
+    base = _config_dir()
+    return os.path.join(base, "runtime.json") if base else None
+
+
+def log_path():
+    base = _config_dir()
+    return os.path.join(base, "hook.log") if base else None
+
+
+def append_log(message):
+    base = _config_dir()
+    if not base:
+        return
+    try:
+        os.makedirs(base, exist_ok=True)
+        with open(os.path.join(base, "hook.log"), "a", encoding="utf-8") as handle:
+            handle.write(f"[{int(time.time())}] {message}\n")
+    except OSError:
+        pass
+
+
+def normalize_event_type(raw):
+    return NORMALIZE.get(raw, raw)
+
+
+def read_stdin_payload():
+    raw = sys.stdin.read()
+    if not raw.strip():
+        return {}
+    return json.loads(raw)
+
+
+def extract_string(payload, keys):
+    for key in keys:
+        value = payload.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
+def resolve_event_url():
+    env_url = os.environ.get("AI_LIGHT_URL")
+    if env_url:
+        env_url = env_url.strip()
+    if env_url:
+        return normalize_event_url(env_url), "AI_LIGHT_URL"
+    path = runtime_config_path()
+    if not path or not os.path.exists(path):
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            runtime = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+    port = runtime.get("http_port")
+    if not isinstance(port, int):
+        return None
+    return f"http://127.0.0.1:{port}/events", "runtime.json"
+
+
+def normalize_event_url(url):
+    return url if url.endswith("/events") else url.rstrip("/") + "/events"
+
+
+def post_event(url, event):
+    data = json.dumps(event).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=2.0) as response:
+            return response.status
+    except HTTPError as error:
+        return error.code
+    except (URLError, OSError):
+        raise
+
+
+def main():
+    if len(sys.argv) < 2:
+        append_log("ignored: missing event type argument")
+        return
+    event_type = normalize_event_type(sys.argv[1])
+
+    try:
+        payload = read_stdin_payload()
+    except (json.JSONDecodeError, ValueError) as error:
+        append_log(f"ignored: invalid stdin payload: {error}")
+        return
+
+    resolved = resolve_event_url()
+    if not resolved:
+        path = runtime_config_path()
+        append_log(
+            f"ignored: no target url for event={event_type}; "
+            f"runtime_path={path or '<none>'}"
+        )
+        return
+    target_url, target_source = resolved
+
+    event = {
+        "event_type": event_type,
+        "session_id": extract_string(payload, ["session_id", "sessionId"]) or "unknown",
+        "cwd": extract_string(payload, ["cwd"]),
+        "tool_call": extract_string(payload, ["tool_name", "tool", "toolName"]),
+    }
+
+    try:
+        status = post_event(target_url, event)
+    except Exception as error:  # noqa: BLE001 - log and continue
+        append_log(
+            f"failed: event={event_type} session={event['session_id']} "
+            f"target={target_url} source={target_source} error={error}"
+        )
+        return
+    append_log(
+        f"sent: event={event_type} session={event['session_id']} "
+        f"target={target_url} source={target_source} status={status}"
+    )
+
+
+if __name__ == "__main__":
+    main()
